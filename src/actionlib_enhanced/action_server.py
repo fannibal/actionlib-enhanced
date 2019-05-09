@@ -5,6 +5,7 @@ import threading
 from multiprocessing import Queue
 import rospy
 from actionlib import ActionServer
+from actionlib.action_server import ServerGoalHandle
 
 
 class ActionServerCustom(object):
@@ -15,7 +16,7 @@ class ActionServerCustom(object):
         self.preempt_callback = None
         self.queue = Queue()
         self.lock = threading.Lock()
-        self.electionList = []
+        self.electionList = dict()
 
         # create the action server
         self.action_server = ActionServer(name, actionMsg, self.get_next_gh, self.internal_preempt_callback, auto_start)
@@ -34,20 +35,22 @@ class ActionServerCustom(object):
 
     def set_succeeded(self, gh, result=None, text=""):
         """
+        :type gh: ServerGoalHandle
         :param gh: GoalHandler
         :param result: An optional result to send back to any clients of the goal
         :param text: An optionnal text associated to the SUCCESS status
         """
-        if not result:
+        if result is None:
             result = self.get_default_result()
-        self.lock.acquire()
-        if gh.get_goal_id().id == self.electionList[0]:
-            rospy.logdebug("{}, {}".format(gh.get_goal_status(), result))
+        if self.isElected(gh):
+            sender, _, _ = gh.get_goal_id().id.split("-")
+            self.lock.acquire()
+            self.electionList.get(sender).pop(0)
             gh.set_succeeded(result, text)
-            _ = self.electionList.pop(0)
+            rospy.logdebug("{}, {}".format(gh.get_goal_status(), result))
+            self.lock.release()
         else:
             rospy.logerr("bad handling of goals, you should check if the goal is elected beforehand")
-        self.lock.release()
 
     def get_default_result(self):
         """
@@ -87,36 +90,30 @@ class ActionServerCustom(object):
         method for the daemon thread to schedule the goal threads
         """
         while True:
-            senderTemp = dict()
-            goalTemp = []
-            if not self.queue.empty():  # check queue
-                goalID = 0
-                while not self.queue.empty():  # handle current queue
-                    goalName = self.queue.get_nowait()
-                    goalTemp.append(goalName)
-                    sender, _, stamp = goalName.split("-")
-                    senderTemp.setdefault(sender, []).append([goalID, float(stamp)])
-                    goalID += 1
-            while senderTemp.values():  # handle goals extracted from queue
-                for sender in senderTemp.keys():  # handle each first goal of each sender
-                    stamps = [goal[1] for goal in senderTemp[sender]]
-                    idx = min(xrange(len(stamps)), key=stamps.__getitem__)
-                    goalID, _ = senderTemp[sender].pop(idx)
-                    curGoal = goalTemp[goalID]
-                    self.lock.acquire()
-                    self.electionList.append(curGoal)
-                    self.lock.release()
-                    if not senderTemp[sender]:
-                        del senderTemp[sender]
+            goalId = self.queue.get()
+            sender, _, stamp = goalId.split("-")
+            stamp = float(stamp)
+            self.lock.acquire()
+            if self.electionList.has_key(sender):
+                senderList = self.electionList.get(sender, [])
+                senderList.append((stamp, goalId))
+                senderList.sort(key=lambda x : x[0])
+            else:
+                self.electionList[sender] = [(stamp, goalId)]
+            self.lock.release()
 
     def isElected(self, goalHandle):
         """
+        :type goalHandle: ServerGoalHandle
         :param goalHandle: goal to check if allowed to be finalized
         :return: boolean value to check if the goal is elected
         """
         isElected = False
+        sender, _, _ = goalHandle.get_goal_id().id.split("-")
         self.lock.acquire()
-        if self.electionList:
-            isElected = (goalHandle.get_goal_id().id == self.electionList[0])
+        senderList = self.electionList.get(sender)
+        if senderList:
+            electedGoal = senderList[0][1]
+            isElected = (goalHandle.get_goal_id().id == electedGoal)
         self.lock.release()
         return isElected

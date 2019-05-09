@@ -66,5 +66,5 @@ if __name__ == "__main__":
     for i in range(1, 21):
         rospy.loginfo("send {}".format(i))
         actionClient.sendRequest2(i)
-        # rospy.sleep(random.randint(1, 20))
+        rospy.sleep(random.randint(1, 5))
     rospy.spin()
