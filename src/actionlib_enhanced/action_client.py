@@ -7,13 +7,14 @@ from actionlib.action_client import ActionClient, CommState
 
 
 class GoalState(object):
+
     PENDING = 0
     ACTIVE = 1
     DONE = 2
     name = {0: "PENDING", 1: "ACTIVE", 2: "DONE"}
 
 
-class ActionClientCustom(object):
+class EnhancedActionClient(object):
 
     def __init__(self, ns, actionMsg):
         self.action_client = ActionClient(ns, actionMsg)
