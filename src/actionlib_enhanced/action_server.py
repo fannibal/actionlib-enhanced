@@ -8,15 +8,17 @@ from actionlib import ActionServer
 from actionlib.action_server import ServerGoalHandle
 
 
-class ActionServerCustom(object):
-    def __init__(self, name, actionMsg, execute_cb=None, auto_start=True):
+class EnhancedActionServer(object):
 
+    def __init__(self, name, actionMsg, execute_cb=None, auto_start=True, call_on_elected=False):
         self.execute_callback = execute_cb
         self.goal_callback = None
         self.preempt_callback = None
+        self.call_on_elected = call_on_elected
         self.queue = Queue()
         self.lock = threading.Lock()
         self.electionList = dict()
+        self.ghDict = dict()
 
         # create the action server
         self.action_server = ActionServer(name, actionMsg, self.get_next_gh, self.internal_preempt_callback, auto_start)
@@ -33,24 +35,24 @@ class ActionServerCustom(object):
         """
         self.action_server.start()
 
-    def set_succeeded(self, gh, result=None, text=""):
+    def set_succeeded(self, result=None, text=""):
         """
-        :type gh: ServerGoalHandle
-        :param gh: GoalHandler
         :param result: An optional result to send back to any clients of the goal
         :param text: An optionnal text associated to the SUCCESS status
         """
+        gh = self.ghDict[threading.current_thread().ident]
         if result is None:
             result = self.get_default_result()
-        if self.isElected(gh):
-            sender, _, _ = gh.get_goal_id().id.split("-")
-            self.lock.acquire()
-            self.electionList.get(sender).pop(0)
-            gh.set_succeeded(result, text)
-            rospy.logdebug("{}, {}".format(gh.get_goal_status(), result))
-            self.lock.release()
-        else:
-            rospy.logerr("bad handling of goals, you should check if the goal is elected beforehand")
+        rate = rospy.Rate(1000)
+        while not self.is_elected(gh):
+            rate.sleep()
+        sender, _, _ = gh.get_goal_id().id.split("-")
+        self.lock.acquire()
+        self.electionList.get(sender).pop(0)
+        gh.set_succeeded(result, text)
+        rospy.logdebug("{}, {}".format(gh.get_goal_status(), result))
+        self.lock.release()
+        self.ghDict.pop(threading.current_thread().ident)
 
     def get_default_result(self):
         """
@@ -58,21 +60,31 @@ class ActionServerCustom(object):
         """
         return self.action_server.ActionResultType()
 
-    def get_next_gh(self, goal):
+    def execute_callback_on_elected(self, goal_handle):
+        rate = rospy.Rate(1000)
+        while not self.is_elected(goal_handle):
+            rate.sleep()
+        self.execute_callback(goal_handle.get_goal())
+
+    def get_next_gh(self, goal_handle):
         """
         start new thread on new goal reception
-        :param goal:
+        :type goal_handle: ServerGoalHandle
         :return:
         """
         try:
-            rospy.logdebug("A new goal %s has been recieved by the single goal action server", goal.get_goal_id().id)
+            rospy.logdebug("A new goal %s has been recieved by the single goal action server", goal_handle.get_goal_id().id)
             if self.execute_callback:
-                goal.status_tracker.status.status = 6
-                self.queue.put(goal.get_goal_id().id, block=False)
+                goal_handle.status_tracker.status.status = 6
+                self.queue.put(goal_handle.get_goal_id().id, block=False)
                 try:
-                    t = threading.Thread(target=self.execute_callback, args=(goal,))
+                    if self.call_on_elected:
+                        t = threading.Thread(target=self.execute_callback_on_elected, args=(goal_handle,))
+                    else:
+                        t = threading.Thread(target=self.execute_callback, args=(goal_handle.get_goal(),))
                     t.setDaemon(True)
                     t.start()
+                    self.ghDict[t.ident] = goal_handle
                 except threading.ThreadError:
                     rospy.logerr("Error: unable to start thread")
             else:
@@ -102,7 +114,7 @@ class ActionServerCustom(object):
                 self.electionList[sender] = [(stamp, goalId)]
             self.lock.release()
 
-    def isElected(self, goalHandle):
+    def is_elected(self, goalHandle):
         """
         :type goalHandle: ServerGoalHandle
         :param goalHandle: goal to check if allowed to be finalized
@@ -117,3 +129,6 @@ class ActionServerCustom(object):
             isElected = (goalHandle.get_goal_id().id == electedGoal)
         self.lock.release()
         return isElected
+
+    def get_goal_handle(self):
+        return self.ghDict[threading.current_thread().ident]

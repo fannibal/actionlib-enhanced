@@ -3,8 +3,8 @@
 
 import rospy
 import actionlib
-from actionlib_enhanced import ActionServerCustom
-from actionlib_enhanced.msg import BasicComAction, BasicComResult
+from actionlib_enhanced import EnhancedActionServer
+from actionlib_enhanced.msg import BasicComAction, BasicComResult, BasicComGoal
 
 class ActionServer():
 
@@ -13,16 +13,11 @@ class ActionServer():
     def __init__(self):
         rospy.init_node("test_actionlib_server")
         self.ns = rospy.get_param("~namespace", "test")
-        # Actionlib
-        self.actionServer = actionlib.SimpleActionServer("/{}/basic_com".format(self.ns),
-                                                         BasicComAction,
-                                                         self.onRequest,
-                                                         auto_start=False)
-        self.actionServer.start()
-        # ActionlibCustom
-        self.actionServerCustom = ActionServerCustom("/{}/enhanced_com".format(self.ns),
+        self.delay = rospy.Duration(5)
+        # Actionlib Enhanced
+        self.actionServerCustom = EnhancedActionServer("/{}/enhanced_com".format(self.ns),
                                                      BasicComAction,
-                                                     self.onRequest2,
+                                                     self.onRequest,
                                                      auto_start=False)
         self.actionServerCustom.start()
 
@@ -32,30 +27,15 @@ class ActionServer():
     def onShutdown(self):
         pass
 
-    def onRequest(self, goal):
+    def onRequest(self, goal):  # multithreaded on requests
         """
         send back the goal it receive
-        :param goal: BasicComGoal
+        :type goal: BasicComGoal
+        :param goal: goal containing the BasicComGoal
         """
         result = BasicComResult(numReceived=goal.numRequest)
         rospy.sleep(self.delay)
-        self.actionServer.set_succeeded(result)
-
-    def onRequest2(self, goalHandle):  # multithreaded on requests
-        """
-        send back the goal it receive
-        :param goalHandle: goalHandle containing the BasicComGoal
-        """
-        # ID info if needed (/!\ : ch3.1 in http://wiki.ros.org/actionlib/DetailedDescription)
-        who, nbrRequest, stamp = goalHandle.get_goal_id().id.split("-")
-
-        goal = goalHandle.get_goal()
-        result = BasicComResult(numReceived=goal.numRequest)
-        rospy.sleep(rospy.Duration(5))
-        rate = rospy.Rate(100)
-        while not self.actionServerCustom.isElected(goalHandle):
-            rate.sleep()
-        self.actionServerCustom.set_succeeded(goalHandle, result)
+        self.actionServerCustom.set_succeeded(result)
 
 
 if __name__ == "__main__":
