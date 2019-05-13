@@ -43,6 +43,7 @@ include_directories(
 
 install(PROGRAMS
   examples/client.py
+  examples/client_multithreaded.py
   examples/server.py
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/examples
 )
