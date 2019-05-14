@@ -22,9 +22,7 @@ generate_messages(
 )
 
 catkin_package(
-  LIBRARIES actionlib_enhanced
   CATKIN_DEPENDS actionlib actionlib_msgs message_runtime std_msgs
-  DEPENDS Boost
 )
 
 
