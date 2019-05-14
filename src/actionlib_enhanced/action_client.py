@@ -43,58 +43,63 @@ class EnhancedActionClient(object):
                              GoalState.PENDING,
                              done_cb,
                              active_cb,
-                             feedback_cb]
+                             feedback_cb,
+                             threading.current_thread().ident]
         self.lock.release()
         return name
 
+    def get_threads(self):
+        L = dict()
+        self.lock.acquire()
+        for name, params in self.ghDict.items():
+            L[params[5]] = name
+        self.lock.release()
+        return L
+
     def send_goal_and_wait(self, goal):
-        name = self.send_goal(goal)
-        if self.wait_for_result(name):
-            return self.get_state(name)
+        _ = self.send_goal(goal)
+        if self.wait_for_result():
+            return self.get_state()
         else:
             return None
 
-    def wait_for_result(self, name):
-        self.lock.acquire()
-        if self.ghDict.get(name) is None:
+    def wait_for_result(self):
+        L = self.get_threads()
+        cur_thread = threading.current_thread().ident
+        if L.get(cur_thread) is None:
             rospy.logerr("Called wait_for_result when this goal doesn't exist")
-            self.lock.release()
             return False
-        self.lock.release()
         isReceived = False
         with self.done_condition:
             while not rospy.is_shutdown() and not isReceived:
-                self.lock.acquire()
-                if self.ghDict.get(name) is None:
+                if L.get(cur_thread) is None:
                     rospy.logerr("Called wait_for_result when this goal doesn't exist")
-                    self.lock.release()
                     return False
-                elif self.ghDict[name][1] == GoalState.DONE:
+                elif self.ghDict[L[cur_thread]][1] == GoalState.DONE:
                     isReceived = True
-                self.lock.release()
-                self.done_condition.wait()
+                else:
+                    self.done_condition.wait()
+                    L = self.get_threads()
 
         return isReceived
 
-    def get_state(self, name):
-        self.lock.acquire()
-        if self.ghDict.get(name) is None:
+    def get_state(self):
+        L = self.get_threads()
+        cur_thread = threading.current_thread().ident
+        if L.get(cur_thread) is None:
             rospy.logerr("Called get_state when this goal doesn't exist")
-            self.lock.release()
             return False
-        self.lock.release()
-        status = self.ghDict[name][1]
+        status = self.ghDict[L[cur_thread]][1]
         return status
 
-    def get_result(self, name):
-        self.lock.acquire()
-        if self.ghDict.get(name) is None:
+    def get_result(self):
+        L = self.get_threads()
+        cur_thread = threading.current_thread().ident
+        if L.get(cur_thread) is None:
             rospy.logerr("Called get_result when this goal doesn't exist")
-            self.lock.release()
             return None
-        self.lock.release()
-        result = self.ghDict[name][0].get_result()
-        removeDone(result)
+        result = self.ghDict[L[cur_thread]][0].get_result()
+        self.removeDone(L[cur_thread])
         return result
 
     def removeDone(self, ID):
@@ -112,10 +117,12 @@ class EnhancedActionClient(object):
         comm_state = curGh.get_comm_state()
         name = curGh.comm_state_machine.action_goal.goal_id.id
         if name in self.ghDict.keys():
-            self.ghDict[name][0].comm_state_machine.latest_result.result = curGh.get_result() #update result
-            oldStatus = self.ghDict[name][1]
-            done_cb = self.ghDict[name][2]
-            active_cb = self.ghDict[name][3]
+            dicGh = self.ghDict[name]
+            if curGh.comm_state_machine.latest_result is not None:
+                dicGh[0].comm_state_machine.latest_result = curGh.comm_state_machine.latest_result  # update result
+            oldStatus = dicGh[1]
+            done_cb = dicGh[2]
+            active_cb = dicGh[3]
 
             error_msg = "Received comm state {} when in state {}".format(comm_state,
                                                                          GoalState.name[oldStatus])
@@ -156,11 +163,11 @@ class EnhancedActionClient(object):
         :param feedback: feedback message received from server
         """
         name = curGh.comm_state_machine.action_goal.goal_id.id
+        self.lock.acquire()
         if name in self.ghDict.keys():
-            self.lock.acquire()
             feedback_cb = self.ghDict[name][4]
-            self.lock.release()
             feedback_cb(feedback)
+        self.lock.release()
 
     def _set_state(self, state, name):
         """

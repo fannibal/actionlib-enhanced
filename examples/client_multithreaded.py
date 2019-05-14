@@ -33,7 +33,9 @@ class ActionClient(object):
         self.goal.numRequest = count
 
         # the ID returned from send_goal can be compared to the doneCallback 3rd arg
-        _ = self.actionClientCustom.send_goal(self.goal, done_cb=self.doneCallback)
+        _ = self.actionClientCustom.send_goal_and_wait(self.goal)
+        result = self.actionClientCustom.get_result()
+        rospy.loginfo("{}".format(result))
 
     @staticmethod
     def doneCallback(goalStatus, data, name=None):
@@ -51,7 +53,7 @@ class ActionClient(object):
 if __name__ == "__main__":
     actionClient = ActionClient()
 
-    for i in range(1, 3):
+    for i in range(1, 4):
         rospy.loginfo("send {}".format(i))
         thread = threading.Thread(target=actionClient.sendRequest, args=(i,))
         thread.setDaemon(True)
