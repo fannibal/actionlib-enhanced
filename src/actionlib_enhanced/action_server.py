@@ -24,8 +24,8 @@ class EnhancedActionServer(object):
         self.action_server = ActionServer(name, actionMsg, self.get_next_gh, self.internal_preempt_callback, auto_start)
 
         # create the scheduling daemon thread
-        if "schedThread" not in [t.name for t in threading.enumerate()]:
-            workingThread = threading.Thread(name="schedThread", target=self.scheduling)
+        if name+"/schedThread" not in [t.name for t in threading.enumerate()]:
+            workingThread = threading.Thread(name=name+"/schedThread", target=self.scheduling)
             workingThread.setDaemon(True)
             workingThread.start()
 
