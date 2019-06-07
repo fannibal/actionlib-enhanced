@@ -50,7 +50,6 @@ class EnhancedActionServer(object):
         self.lock.acquire()
         self.electionList.get(sender).pop(0)
         gh.set_succeeded(result, text)
-        rospy.logdebug("{}, {}".format(gh.get_goal_status(), result))
         self.lock.release()
         self.ghDict.pop(threading.current_thread().ident)
 
