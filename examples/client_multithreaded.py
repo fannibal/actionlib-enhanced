@@ -6,6 +6,7 @@ import rospy
 import threading
 from actionlib_enhanced.msg import BasicComAction, BasicComGoal
 from actionlib_enhanced import EnhancedActionClient
+from actionlib_msgs.msg import GoalStatus
 
 
 class ActionClient(object):
@@ -31,30 +32,19 @@ class ActionClient(object):
         :param count: number corresponding to the BasicComGoal message
         """
         self.goal.numRequest = count
-
-        # the ID returned from send_goal can be compared to the doneCallback 3rd arg
-        _ = self.actionClientCustom.send_goal_and_wait(self.goal)
+        status = self.actionClientCustom.send_goal_and_wait(self.goal)
         result = self.actionClientCustom.get_result()
-        rospy.loginfo("{}".format(result))
-
-    @staticmethod
-    def doneCallback(goalStatus, data, name=None):
-        """
-        :param goalStatus: Status of the received goal
-        :param data: BasicComResult message
-        :param name: ID of the goal, useful for multithreaded requests
-        """
-        if goalStatus == 3:  # SUCCESS
-            rospy.loginfo("Waiting for something :)")
-            rospy.sleep(5)
-            rospy.loginfo("received {}".format(data.numReceived))
+        if status == GoalStatus.SUCCEEDED:
+            rospy.loginfo("Received: {}".format(result))
+        else:
+            rospy.logerr("Goal status: {}".format(status))
 
 
 if __name__ == "__main__":
     actionClient = ActionClient()
 
-    for i in range(1, 4):
-        rospy.loginfo("send {}".format(i))
+    for i in range(1, 7):
+        rospy.loginfo("Sending {}".format(i))
         thread = threading.Thread(target=actionClient.sendRequest, args=(i,))
         thread.setDaemon(True)
         thread.start()

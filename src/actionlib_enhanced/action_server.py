@@ -35,48 +35,40 @@ class EnhancedActionServer(object):
         """
         self.action_server.start()
 
-    def set_succeeded(self, result=None, text=""):
+    def _set_gh_state(self, result=None, text="", succeeded=True):
         """
         :param result: An optional result to send back to any clients of the goal
-        :param text: An optionnal text associated to the SUCCESS status
+        :param text: An optionnal text associated to the SUCCESS|ABORTED status
+        :param succeeded: the goal handle is set to SUCCEEDED if true, else ABORTED
         """
-        if not self.ghDIct.has_key(threading.current_thread().ident):
+        threadId = threading.current_thread().ident
+        self.lock.acquire()
+        if not self.ghDict.has_key(threadId):
             rospy.logwarn("set_succeeded called more than once in an actionlib server callback or outside one, ignoring call")
             return
-        gh = self.ghDict[threading.current_thread().ident]
+        gh = self.ghDict[threadId]
         if result is None:
             result = self.get_default_result()
         rate = rospy.Rate(1000)
-        while not self.is_elected(gh):
-            rate.sleep()
-        sender, _, _ = gh.get_goal_id().id.split("-")
-        self.lock.acquire()
-        self.electionList.get(sender).pop(0)
-        gh.set_succeeded(result, text)
-        self.ghDict.pop(threading.current_thread().ident)
         self.lock.release()
-        
-    def set_aborted(self, result=None, text=""):
-        """
-        :param result: An optional result to send back to any clients of the goal
-        :param text: An optionnal text associated to the ABORTED status
-        """
-        if not self.ghDIct.has_key(threading.current_thread().ident):
-            rospy.logwarn("set_aborted called more than once in an actionlib server callback or outside one, ignoring call")
-            return
-        gh = self.ghDict[threading.current_thread().ident]
-        if result is None:
-            result = self.get_default_result()
-        rate = rospy.Rate(1000)
         while not self.is_elected(gh):
             rate.sleep()
         sender, _, _ = gh.get_goal_id().id.split("-")
-        self.lock.acquire()
         self.electionList.get(sender).pop(0)
-        gh.set_aborted(result, text)
-        self.ghDict.pop(threading.current_thread().ident)
+        if succeeded:
+            gh.set_succeeded(result, text)
+        else:
+            gh.set_aborted(result, text)
+        self.lock.acquire()
+        self.ghDict.pop(threadId)
         self.lock.release()
 
+    def set_succeeded(self, result=None, text=""):
+        self._set_gh_state(result, text)
+
+    def set_aborted(self, result=None, text=""):
+        self._set_gh_state(result, text, succeeded=False)
+        
     def get_default_result(self):
         """
         :return: default content for result message
@@ -87,12 +79,18 @@ class EnhancedActionServer(object):
         rate = rospy.Rate(1000)
         while not self.is_elected(goal_handle):
             rate.sleep()
+        self.execute_server_callback(goal_handle)
+
+    def execute_server_callback(self, goal_handle):
+        self.lock.acquire()
+        self.ghDict[threading.current_thread().ident] = goal_handle
+        self.lock.release()
         try:
             self.execute_callback(goal_handle.get_goal())
         except Exception as e:
             rospy.logerr("Error in the actionlib server callback: {}".format(e))
         finally:
-            if self.ghDIct.has_key(threading.current_thread().ident):
+            if self.ghDict.has_key(threading.current_thread().ident):
                 rospy.logwarn("The actionlib server callback did not set the goal as succeeded, sending unsuccessful result")
                 self.set_aborted()
 
@@ -111,10 +109,9 @@ class EnhancedActionServer(object):
                     if self.call_on_elected:
                         t = threading.Thread(target=self.execute_callback_on_elected, args=(goal_handle,))
                     else:
-                        t = threading.Thread(target=self.execute_callback, args=(goal_handle.get_goal(),))
+                        t = threading.Thread(target=self.execute_server_callback, args=(goal_handle,))
                     t.setDaemon(True)
                     t.start()
-                    self.ghDict[t.ident] = goal_handle
                 except threading.ThreadError:
                     rospy.logerr("Error: unable to start thread")
             else:

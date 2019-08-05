@@ -4,6 +4,7 @@
 import threading
 import rospy
 from actionlib.action_client import ActionClient, CommState
+from actionlib_msgs.msg import GoalStatus
 
 
 class GoalState(object):
@@ -89,8 +90,7 @@ class EnhancedActionClient(object):
         if L.get(cur_thread) is None:
             rospy.logerr("Called get_state when this goal doesn't exist")
             return False
-        status = self.ghDict[L[cur_thread]][1]
-        return status
+        return self.ghDict[L[cur_thread]][0].get_goal_status()
 
     def get_result(self):
         L = self.get_threads()
@@ -124,8 +124,7 @@ class EnhancedActionClient(object):
             done_cb = dicGh[2]
             active_cb = dicGh[3]
 
-            error_msg = "Received comm state {} when in state {}".format(comm_state,
-                                                                         GoalState.name[oldStatus])
+            error_msg = "Received comm state {} when in state {}".format(comm_state, GoalState.name[oldStatus])
 
             if comm_state == CommState.ACTIVE:
                 if oldStatus == GoalState.PENDING:
