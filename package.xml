@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>actionlib_enhanced</name>
-  <version>0.0.8</version>
+  <version>0.0.9</version>
   <description>The actionlib_enhanced package</description>
   <maintainer email="fabrice.poirier@ensta-bretagne.org">Fabrice Poirier</maintainer>
   <license>Apache-2.0</license>
