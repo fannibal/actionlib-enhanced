@@ -2,8 +2,9 @@
 # coding: utf-8
 
 import threading
-from multiprocessing import Queue
 import rospy
+import traceback
+from multiprocessing import Queue
 from actionlib import ActionServer
 from actionlib.action_server import ServerGoalHandle
 
@@ -87,8 +88,10 @@ class EnhancedActionServer(object):
         self.lock.release()
         try:
             self.execute_callback(goal_handle.get_goal())
+        except (KeyboardInterrupt, SystemExit):
+            raise
         except Exception as e:
-            rospy.logerr("Error in the actionlib server callback: {}".format(e))
+            rospy.logerr("Error in the actionlib server callback: {}".format(traceback.format_exc()))
         finally:
             if self.ghDict.has_key(threading.current_thread().ident):
                 rospy.logwarn("The actionlib server callback did not set the goal as succeeded, sending unsuccessful result")
