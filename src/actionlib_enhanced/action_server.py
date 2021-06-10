@@ -44,7 +44,7 @@ class EnhancedActionServer(object):
         """
         threadId = threading.current_thread().ident
         self.lock.acquire()
-        if not self.ghDict.has_key(threadId):
+        if threadId not in self.ghDict:
             rospy.logwarn("set_succeeded called more than once in an actionlib server callback or outside one, ignoring call")
             return
         gh = self.ghDict[threadId]
@@ -93,7 +93,7 @@ class EnhancedActionServer(object):
         except Exception as e:
             rospy.logerr("Error in the actionlib server callback: {}".format(traceback.format_exc()))
         finally:
-            if self.ghDict.has_key(threading.current_thread().ident):
+            if threading.current_thread().ident in self.ghDict:
                 rospy.logwarn("The actionlib server callback did not set the goal as succeeded, sending unsuccessful result")
                 self.set_aborted()
 
@@ -136,7 +136,7 @@ class EnhancedActionServer(object):
             sender, _, stamp = goalId.split("-")
             stamp = float(stamp)
             self.lock.acquire()
-            if self.electionList.has_key(sender):
+            if sender in self.electionList:
                 senderList = self.electionList.get(sender, [])
                 senderList.append((stamp, goalId))
                 senderList.sort(key=lambda x : x[0])
